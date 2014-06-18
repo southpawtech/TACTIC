@@ -934,7 +934,6 @@ class IngestUploadCmd(Command):
         filenames = my.kwargs.get("filenames")
 
         upload_dir = Environment.get_upload_dir()
-        base_dir = upload_dir
 
 
         search_type = my.kwargs.get("search_type")
