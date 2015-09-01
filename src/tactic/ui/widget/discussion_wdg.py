@@ -1410,6 +1410,11 @@ class DiscussionWdg(BaseRefreshWdg):
                 'note_expandable': my.note_expandable,
                 'note_format': my.note_format,
                 'cbjs_action': '''
+                var top = bvr.src_el.getParent(".spt_discussion_context_top");
+                if (top.getAttribute("spt_is_loaded") == "true") {
+                    return;
+                }
+
                 var class_name = 'tactic.ui.widget.NotesContextWdg';
                 var kwargs = {
                     note_keys: bvr.note_keys,
@@ -1418,9 +1423,10 @@ class DiscussionWdg(BaseRefreshWdg):
                     note_format: bvr.note_format,
                 }
 
-                var top = bvr.src_el.getParent(".spt_discussion_context_top");
                 var el = top.getElement(".spt_discussion_content");
                 spt.panel.load(el, class_name, kwargs);
+
+                top.setAttribute("spt_is_loaded", "true");
 
                 '''
             } )
