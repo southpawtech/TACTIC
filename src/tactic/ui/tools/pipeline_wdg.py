@@ -2655,6 +2655,7 @@ class TaskStatusInfoWdg(BaseInfoWdg):
 
 
 
+
 __all__.append("ProcessInfoCmd")
 class ProcessInfoCmd(Command):
 
