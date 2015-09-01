@@ -23,6 +23,7 @@
 
 
 spt.Environment = function() {
+    this.site = null;
     this.project_code = null;
     //this.url = null;
     this.user = null;
@@ -37,11 +38,24 @@ spt.Environment = function() {
     this.libraries = {};
 
     // by default, look at the browser
-    var location = document.location;
-    var port = location.port;
-    this.server_url = location.protocol + "//" + location.hostname;
-    if (port)
-        this.server_url = this.server_url + ':' + port
+    if (typeof(document) != 'undefined') {
+        var location = document.location;
+        var port = location.port;
+        this.server_url = location.protocol + "//" + location.hostname;
+        if (port)
+            this.server_url = this.server_url + ':' + port
+    }
+
+
+
+    this.set_site = function(site) {
+        if (site) {
+            this.site = site;
+        }
+    }
+    this.get_site = function() {
+        return this.site;
+    }
 
 
     this.set_project = function(project_code) {
@@ -180,8 +194,11 @@ spt.Environment = function() {
     }
 
     this.read_cookie = function(key) {
-        var value = document.cookie.match('(?:^|;)\\s*' + key.replace(/([-.*+?^${}()|[\]\/\\])/g, '\\$1') + '=([^;]*)');
-		return (value) ? decodeURIComponent(value[1]) : null;
+        if (typeof(document) != 'undefined') {
+            var value = document.cookie.match('(?:^|;)\\s*' + key.replace(/([-.*+?^${}()|[\]\/\\])/g, '\\$1') + '=([^;]*)');
+                    return (value) ? decodeURIComponent(value[1]) : null;
+        }
+        else return null;
     }
 
 }

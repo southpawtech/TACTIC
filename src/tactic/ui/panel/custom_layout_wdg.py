@@ -307,7 +307,7 @@ class CustomLayoutWdg(BaseRefreshWdg):
                 # this will raise an exception if it is not in a table element
                 sobject = my.get_current_sobject()
             except:
-	        sobject = SearchKey.get_by_search_key(my.search_key)
+                sobject = SearchKey.get_by_search_key(my.search_key)
             sobjects = [sobject]
         else:
             try:
@@ -719,10 +719,9 @@ class CustomLayoutWdg(BaseRefreshWdg):
             view_kwargs = my.kwargs.copy()
             for key, value in view_kwargs.items():
                 try:
-                    test = jsonloads(value)
-                except:
+                    test = jsondumps(value)
+                except Exception, e:
                     del(view_kwargs[key])
-
 
 
             for behavior_node in behavior_nodes:
@@ -1136,13 +1135,14 @@ class CustomLayoutWdg(BaseRefreshWdg):
                 '''
             } )
 
-        loading_div = DivWdg()
-        loading_div.add_style("margin: auto auto")
-        loading_div.add_style("width: 150px")
-        loading_div.add_style("text-align: center")
-        loading_div.add_style("padding: 20px")
-        div.add(loading_div)
-        loading_div.add('''<img src="/context/icons/common/indicator_snake.gif" border="0"/> <b>Loading ...</b>''')
+        if my.kwargs.get("show_loading") not in ["False", False, "false"]:
+            loading_div = DivWdg()
+            loading_div.add_style("margin: auto auto")
+            loading_div.add_style("width: 150px")
+            loading_div.add_style("text-align: center")
+            loading_div.add_style("padding: 20px")
+            div.add(loading_div)
+            loading_div.add('''<img src="/context/icons/common/indicator_snake.gif" border="0"/> <b>Loading ...</b>''')
 
         return div
 
@@ -1283,7 +1283,11 @@ class CustomLayoutWdg(BaseRefreshWdg):
 
 
             includes = my.kwargs.get("include")
-            element_wdg = config.get_display_widget(element_name, extra_options={"include":includes, "parent_view":parent_view})
+            extra_options = {"parent_view": parent_view}
+            if includes:
+                extra_options['include'] = includes
+
+            element_wdg = config.get_display_widget(element_name, extra_options=extra_options)
 
             element_top = element_wdg.get_top()
             for name, value in attrs.items():

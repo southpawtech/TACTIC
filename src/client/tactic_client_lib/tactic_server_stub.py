@@ -521,8 +521,8 @@ class TacticServerStub(object):
 
 
 
-    def get_ticket(my, login, password):
-        '''API Function: get_ticket(login, password)
+    def get_ticket(my, login, password, site=None):
+        '''API Function: get_ticket(login, password, site=None)
         Get an authentication ticket based on a login and password.
         This function first authenticates the user and the issues a ticket.
         The returned ticket is used on subsequent calls to the client api
@@ -531,11 +531,13 @@ class TacticServerStub(object):
         login - the user that is used for authentications
         password - the password of that user
 
+        @keyparam:
+        site - name of the site used in a portal setup
+
         @return:
         string - ticket key  
         '''
-        return my.server.get_ticket(login, password)
-
+        return my.server.get_ticket(login, password, site)
 
 
     def get_info_from_user(my, force=False):
@@ -570,7 +572,6 @@ class TacticServerStub(object):
         if not server_name:
             server_name = old_server_name
 
-        print
         login = raw_input("Enter user name (%s): " % default_login)
         if not login:
             login = default_login
@@ -709,6 +710,21 @@ class TacticServerStub(object):
         subscription sobject
         '''
         return my.server.subscribe(my.ticket, key, category)
+
+
+    def unsubscribe(my, key):
+        '''API Function: unsubscribe(key)
+
+        Allow a user to unsubscribe from this message key.
+
+        @params
+        key - unique key for this message
+
+        @return
+        dictionary - the values of the subscription sobject in the
+        form name:value pairs
+        '''
+        return my.server.unsubscribe(my.ticket, key)
 
 
 
@@ -2594,8 +2610,8 @@ class TacticServerStub(object):
 
 
 
-    def query_snapshots(my, filters=None, columns=None, order_bys=[], show_retired=False, limit=None, offset=None, single=False, include_paths=False, include_full_xml=False, include_paths_dict=False, include_parent=False, include_files=False):
-        '''API Function:  query_snapshots(filters=None, columns=None, order_bys=[], show_retired=False, limit=None, offset=None, single=False, include_paths=False, include_full_xml=False, include_paths_dict=False, include_parent=False, include_files=False)
+    def query_snapshots(my, filters=None, columns=None, order_bys=[], show_retired=False, limit=None, offset=None, single=False, include_paths=False, include_full_xml=False, include_paths_dict=False, include_parent=False, include_files=False, include_web_paths_dict=False):
+        '''API Function:  query_snapshots(filters=None, columns=None, order_bys=[], show_retired=False, limit=None, offset=None, single=False, include_paths=False, include_full_xml=False, include_paths_dict=False, include_parent=False, include_files=False, include_web_paths=False)
 
         thin wrapper around query, but is specific to querying snapshots
         with some useful included flags that are specific to snapshots
@@ -2615,6 +2631,10 @@ class TacticServerStub(object):
         include_paths_dict - flag to specify whether to include a
             __paths_dict__ property containing a dict of all paths in the
             dependent snapshots
+        include_web_paths_dict - flag to specify whether to include a
+            __web_paths_dict__ property containing a dict of all web paths in
+            the returned snapshots
+
         include_full_xml - flag to return the full xml definition of a snapshot
         include_parent - includes all of the parent attributes in a __parent__ dictionary
         include_files - includes all of the file objects referenced in the
@@ -2627,7 +2647,7 @@ class TacticServerStub(object):
                                          show_retired, limit, offset, single,
                                          include_paths, include_full_xml,
                                          include_paths_dict, include_parent,
-                                         include_files)
+                                         include_files, include_web_paths_dict)
 
 
 
@@ -3495,6 +3515,23 @@ class TacticServerStub(object):
             string - description of command
         '''
         return my.server.execute_cmd(my.ticket, class_name, args, values)
+
+
+
+    def execute_js_script(my, script_path, kwargs={}):
+        '''API Function: execute_js_script(script_path, kwargs) 
+        Execute a js script defined in Script Editor
+
+        @param:
+            script_path - script path in Script Editor, e.g. test/eval_sobj
+        @keyparam:
+            kwargs  - keyword arguments for this script
+
+        @return:
+            dictionary - returned data structure
+        '''
+        return my.server.execute_js_script(my.ticket, script_path, kwargs)
+
 
 
 

@@ -26,7 +26,7 @@ from pyasm.widget import ThumbWdg, IconWdg, WidgetConfig, WidgetConfigView, Swap
 from tactic.ui.common import BaseRefreshWdg
 from tactic.ui.container import SmartMenu
 
-from pyasm.biz import Project, ExpressionParser
+from pyasm.biz import Project, ExpressionParser, Subscription
 from tactic.ui.table import ExpressionElementWdg, PythonElementWdg
 from tactic.ui.common import BaseConfigWdg
 from tactic.ui.widget import ActionButtonWdg
@@ -188,6 +188,21 @@ class FastTableLayoutWdg(BaseTableLayoutWdg):
         "temp" : {
             'description': "Determines whether this is a temp table just to retrieve data",
             'category' : 'internal'
+        },
+
+        "no_results_msg" : {
+            'description': 'the message displayed when the search returns no item',
+            'type': 'TextWdg',
+            'category': 'Display',
+            'Order': '14'
+        },
+
+        "no_results_mode" : {
+            'description': 'the display modes for no results',
+            'type': 'SelectWdg',
+            'values': 'default|compact',
+            'category': 'Display',
+            'order': '15'
         }
         
 
@@ -592,8 +607,8 @@ class FastTableLayoutWdg(BaseTableLayoutWdg):
             inner.add_attr("has_extra_header", "true")
 
 
-        if my.config_xml:
-            inner.add_attr("spt_config_xml", my.config_xml)
+        #if my.config_xml:
+        #    inner.add_attr("spt_config_xml", my.config_xml)
 
         save_class_name = my.kwargs.get("save_class_name")
         if save_class_name:
@@ -908,6 +923,13 @@ class FastTableLayoutWdg(BaseTableLayoutWdg):
 
         table.set_id(my.table_id)
         
+        # generate dictionary of subscribed search_keys to affect context menu
+        my.subscribed_search_keys = {}
+        login = Environment.get_login().get("login")
+        subscribed = Subscription.get_by_search_type(login, my.search_type)
+        for item in subscribed:
+            item_search_key = item.get("message_code")
+            my.subscribed_search_keys[item_search_key] = True
 
         # set up the context menus
         show_context_menu = my.kwargs.get("show_context_menu")
@@ -1337,7 +1359,8 @@ class FastTableLayoutWdg(BaseTableLayoutWdg):
 
 
     def handle_table_behaviors(my, table):
-
+        security = Environment.get_security()
+        project_code = Project.get_project_code()
         my.handle_load_behaviors(table)
 
         # add the search_table_<table_id> listener used by widgets 
@@ -1586,7 +1609,6 @@ class FastTableLayoutWdg(BaseTableLayoutWdg):
         } )
 
 
-
         # selection behaviors
         table.add_behavior( {
         'type': 'smart_click_up',
@@ -1677,23 +1699,24 @@ class FastTableLayoutWdg(BaseTableLayoutWdg):
 
         # row highlighting
 
-        table.add_behavior( {
-        'type': 'load',
-        'cbjs_action': '''
-        bvr.src_el.addEvent('mouseover:relay(.spt_table_row)',
-            function(event, src_el) {
-                // remember the original color
-                src_el.setAttribute("spt_hover_background", src_el.getStyle("background-color"));
-                spt.mouse.table_layout_hover_over({}, {src_el: src_el, add_color_modifier: -5});
-            } )
+        if my.kwargs.get("show_row_highlight") not in [False, 'false']:
+            table.add_behavior( {
+            'type': 'load',
+            'cbjs_action': '''
+            bvr.src_el.addEvent('mouseover:relay(.spt_table_row)',
+                function(event, src_el) {
+                    // remember the original color
+                    src_el.setAttribute("spt_hover_background", src_el.getStyle("background-color"));
+                    spt.mouse.table_layout_hover_over({}, {src_el: src_el, add_color_modifier: -5});
+                } )
 
-        bvr.src_el.addEvent('mouseout:relay(.spt_table_row)',
-            function(event, src_el) {
-                src_el.setAttribute("spt_hover_background", "");
-                spt.mouse.table_layout_hover_out({}, {src_el: src_el});
+            bvr.src_el.addEvent('mouseout:relay(.spt_table_row)',
+                function(event, src_el) {
+                    src_el.setAttribute("spt_hover_background", "");
+                    spt.mouse.table_layout_hover_out({}, {src_el: src_el});
+                } )
+            '''
             } )
-        '''
-        } )
 
 
         # set styles at the table level to be relayed down
@@ -1713,14 +1736,23 @@ class FastTableLayoutWdg(BaseTableLayoutWdg):
             "background-position": "bottom right",
         } )
 
-
+        
+        is_editable = my.kwargs.get("is_editable")
 
         # Edit behavior
-        is_editable = my.kwargs.get("is_editable")
         if is_editable in [False, 'false']:
             is_editable = False
         else:
             is_editable = True
+
+        # Check user access
+        access_keys = my._get_access_keys("edit",  project_code)
+        if security.check_access("builtin", access_keys, "edit"):
+            is_editable = True
+        else: 
+            is_editable = False
+            my.view_editable = False
+            
 
         if is_editable:
             table.add_behavior( {
@@ -2546,6 +2578,10 @@ class FastTableLayoutWdg(BaseTableLayoutWdg):
 
         display_value = sobject.get_display_value(long=True)
         tr.add_attr("spt_display_value", display_value)
+
+        if my.subscribed_search_keys.get(sobject.get_search_key()):
+            tr.set_attr("spt_is_subscribed","true")
+
         if sobject.is_retired():
             background = tr.add_color("background-color", "background", [20, -10, -10])
             tr.set_attr("spt_widget_is_retired","true")
@@ -2646,13 +2682,14 @@ class FastTableLayoutWdg(BaseTableLayoutWdg):
 
 
             is_editable = True
-
-            if not widget.is_editable():
-                is_editable = False
-            else:
-                security = Environment.get_security()
-                if not security.check_access('element', {'name': element_name}, "edit", default='edit'):
+            # Check if view is editable first, if not, skip checking each column
+            if my.view_editable:
+                if not widget.is_editable():
                     is_editable = False
+                else:
+                    security = Environment.get_security()
+                    if not security.check_access('element', {'name': element_name}, "edit", default='edit'):
+                        is_editable = False
 
 
             # This is only neccesary if the table is editable
@@ -2863,6 +2900,8 @@ class FastTableLayoutWdg(BaseTableLayoutWdg):
         td.add_class( 'SPT_DTS' )
         #td.add_color("background-color", "background", -0)
         td.add_color("opacity", "0.5")
+        if my.subscribed_search_keys.get(sobject.get_search_key()):
+            td.add_border(direction="right", color="#ecbf7f", size="2px")
 
         if sobject and sobject.is_insert():
             icon_div = DivWdg()
@@ -3058,7 +3097,6 @@ spt.table.drop_row = function(evt, el) {
     var top = $(el);
     var thumb_el = top.getElement(".spt_thumb_top");
     var size = thumb_el.getSize();
-    console.log(size);
 
     for (var i = 0; i < files.length; i++) {
         var size = files[i].size;
@@ -3415,11 +3453,14 @@ spt.table.get_selected_rows = function() {
 
 
 
-spt.table.get_selected_search_keys = function() {
+spt.table.get_selected_search_keys = function(use_id) {
     var rows = spt.table.get_selected_rows();
     var search_keys = [];
+    // if use_id is false, search_key uses code
+    if (use_id == null) use_id = true;
+
     for (var i = 0; i < rows.length; i++) {
-        var search_key = rows[i].getAttribute("spt_search_key");
+        var search_key = use_id ? rows[i].getAttribute("spt_search_key") : rows[i].getAttribute("spt_search_key_v2");
         search_keys.push(search_key);
     }
 
@@ -4453,7 +4494,8 @@ spt.table.accept_edit = function(edit_wdg, new_value, set_display, kwargs) {
         edited_cell = edit_wdg.getParent(".spt_cell_edit");
     }
 
-
+    var old_value = edited_cell.getAttribute("spt_input_value");
+    
     var ignore_multi = kwargs.ignore_multi ? true : false;
 
     var header = spt.table.get_header_by_cell(edited_cell);
@@ -4463,11 +4505,17 @@ spt.table.accept_edit = function(edit_wdg, new_value, set_display, kwargs) {
     
     // Multi EDIT
     var selected_rows = spt.table.get_selected_rows();
-    if (!ignore_multi && selected_rows.length > 0) {
+    var in_selected_row = edited_cell.getParent("tr.spt_table_selected");
+    
+    var changed = old_value != new_value;
+
+    if (!ignore_multi && selected_rows.length > 0 && changed && in_selected_row) {
         // get all of the cells with the same element_name
         var index = spt.table.get_column_index_by_cell(edited_cell);
+
         for (var i = 0; i < selected_rows.length; i++) {
             var cell = selected_rows[i].getElements(".spt_cell_edit")[index];
+           
             spt.table._accept_single_edit(cell, new_value);
 
             if (set_display) {
@@ -4475,6 +4523,7 @@ spt.table.accept_edit = function(edit_wdg, new_value, set_display, kwargs) {
                 cell.setStyle("overflow", "hidden");
                 spt.table.set_display(cell, display_value, input_type);
             }
+            
         }
 
     }
@@ -4567,16 +4616,18 @@ spt.table.set_changed_color = function(row, cell) {
         row.setAttribute("spt_background", "#204411");
     } 
     else {
-        row.setStyle("background-color", "#C0CC99");
-        cell.setStyle("background-color", "#909977");
-        row.setAttribute("spt_background", "#C0CC99");
-        /*
-        var el = cell;
-        el.setStyle("background", "#EFE");
-        el.setStyle("border-color", "#0F0");
-        el.setStyle("border-style", "solid");
-        el.setStyle("border-width", "2px 1px 1px 2px");
-        */
+        //color = "rgba(188, 207, 215, 1.0)";
+        //color2 = "rgba(188, 207, 215, 0.6)";
+        color = "rgba(207, 215, 188, 1.0)";
+        color2 = "rgba(207, 215, 188, 0.6)";
+
+        row.setStyle("background-color", color2);
+        cell.setStyle("background-color", color);
+        row.setAttribute("spt_background", color2);
+
+        //row.setStyle("background-color", "#C0CC99");
+        //cell.setStyle("background-color", "#909977");
+        //row.setAttribute("spt_background", "#C0CC99");
     }
 }
 
@@ -5926,6 +5977,7 @@ spt.table.row_ctx_menu_setup_cbk = function( menu_el, activator_el ) {
 
     var commit_enabled = true;
     var row_is_retired = false;
+    var row_is_subscribed = false;
     var display_label = "not found";
 
     
@@ -5941,6 +5993,7 @@ spt.table.row_ctx_menu_setup_cbk = function( menu_el, activator_el ) {
                             "Use 'search_key' as display_label." );
             display_label = tr.get("spt_search_key");
         }
+        row_is_subscribed = tr.getAttribute('spt_is_subscribed');
     }
    
 
@@ -5948,7 +6001,9 @@ spt.table.row_ctx_menu_setup_cbk = function( menu_el, activator_el ) {
         'commit_enabled' : commit_enabled,
         'is_retired': row_is_retired,
         'is_not_retired': (! row_is_retired),
-        'display_label': display_label
+        'display_label': display_label,
+        'is_subscribed': row_is_subscribed,
+        'is_not_subscribed': (! row_is_subscribed)
     }
     return setup_info;
 }

@@ -597,18 +597,23 @@ class BaseApiXMLRPC(XmlrpcServer):
       
         # if the project code is in the ticket, then set the project
         if type(ticket) == types.DictType:
+            site = ticket.get("site")
             project_code = ticket.get("project")
             language = ticket.get("language")
             palette = ticket.get("palette")
             ticket = ticket.get("ticket")
 
         else:
+            # DEPRECATED
             if ticket.find(":") != -1:
                 project_code, ticket = ticket.split(":")
             else:
                 project_code = None
             language = "python"
             palette = None
+            site = None
+
+
 
         if my.get_protocol() == "local":
             if project_code:
@@ -617,22 +622,25 @@ class BaseApiXMLRPC(XmlrpcServer):
 
         # if a session container has been cached, use that
         key = ticket
-        container = None
-        if not container:
 
-            # start a new session and store the container
-            container = Container.create()
-            #my.session_containers[key] = container
+        # start a new session and store the container
+        container = Container.create()
+        #my.session_containers[key] = container
 
-            XmlRpcInit(ticket)
+        # need to set site
+        from pyasm.security import Site
+        if site:
+            Site.set_site(site)
 
-            if project_code:
-                Project.set_project(project_code)
-                Project.get()
+        XmlRpcInit(ticket)
 
-            # initialize the web environment object and register it
-            adapter = my.get_adapter()
-            WebContainer.set_web(adapter)
+        if project_code:
+            Project.set_project(project_code)
+            Project.get()
+
+        # initialize the web environment object and register it
+        adapter = my.get_adapter()
+        WebContainer.set_web(adapter)
 
 
         # now that we have a container, set up the information
@@ -963,7 +971,13 @@ class ApiXMLRPC(BaseApiXMLRPC):
             message = jsondumps(message)
 
         # go low level
-        sql = Sql("sthpw")
+        from pyasm.security import Site
+        site = Site.get_site()
+        if site:
+            db_resource = Site.get_db_resource(site, "sthpw")
+        else:
+            db_resource = "sthpw"
+        sql = Sql(db_resource)
         sql.connect()
 
         project_code = Project.get_project_code()
@@ -1050,7 +1064,7 @@ class ApiXMLRPC(BaseApiXMLRPC):
 
         @params
         ticket - authentication ticket
-        key - unique key for this message
+        key - unique key for this message in the message_code column
 
         @keyparam
         category - value to categorize this message
@@ -1082,6 +1096,36 @@ class ApiXMLRPC(BaseApiXMLRPC):
 
         sobject_dict = my._get_sobject_dict(subscription)
         return sobject_dict
+
+
+    @xmlrpc_decorator
+    def unsubscribe(my, ticket, key):
+        '''Allow a user to unsubscribe from this message key.
+
+        @params
+        ticket - authentication ticket
+        key - unique key for this message in the message_code column
+
+        @return:
+        dictionary - the values of the subscription sobject in the
+        form name:value pairs
+        '''
+
+        project_code = Project.get_project_code()
+
+        search = Search("sthpw/subscription")
+        search.add_user_filter()
+        search.add_filter("message_code", key)
+        search.add_filter("project_code", project_code)
+        subscription  = search.get_sobject()
+
+        if not subscription:
+            raise ApiException('[%s] is not subscribed to.'%key)
+            # nothing to do ... item is not subscribed to
+
+        subscription.delete()
+
+        return my._get_sobject_dict(subscription)
 
 
 
@@ -1324,7 +1368,7 @@ class ApiXMLRPC(BaseApiXMLRPC):
     @xmlrpc_decorator
     def get_column_info(my, ticket, search_type):
         search_type_obj = SearchType.get(search_type)
-        return search_type_obj.get_column_info()
+        return search_type_obj.get_column_info(search_type)
 
     @xmlrpc_decorator
     def get_related_types(my, ticket, search_type):
@@ -1611,18 +1655,32 @@ class ApiXMLRPC(BaseApiXMLRPC):
             data = jsonloads(data)
 
         search_keys = data.keys()
-        sobjects = Search.get_by_search_keys(search_keys)
+        use_id_list = []
+        # auto detects use_id or not
+        for search_key in search_keys:
+            if search_key.find('id') != -1:
+                use_id_list.append(True)
+            else:
+                use_id_list.append(False)
 
-        results = [];
+        sobjects = Search.get_by_search_keys(search_keys, keep_order=True)
 
-        for sobject in sobjects:
-            search_key = sobject.get_search_key()
+        if len(sobjects) < len(search_keys):
+            raise TacticException('Not all search keys have equivalent sobjects in the system.')
+
+        results = []
+
+        for idx, sobject in enumerate(sobjects):
+            search_key = sobject.get_search_key(use_id=use_id_list[idx])
             sobject_data = data.get(search_key)
+            if not sobject_data:
+                print "search key [%s] does not exist in the system." %search_key
+                continue
             for key, value in sobject_data.items():
                 sobject.set_value(key, value)
             sobject.commit(triggers=triggers)
 
-            sobject_dict = my._get_sobject_dict(sobject)
+            sobject_dict = my._get_sobject_dict(sobject, use_id=use_id_list[idx])
             results.append(sobject_dict)
 
         return results
@@ -1637,7 +1695,7 @@ class ApiXMLRPC(BaseApiXMLRPC):
         data = [
             { column1: value1, column2: value2,  column3: value3 },
             { column1: value1, column2: value2,  column3: value3 }
-        }
+        ]
 
         metadata =  [
             { color: blue, height: 180 },
@@ -3943,7 +4001,7 @@ class ApiXMLRPC(BaseApiXMLRPC):
 
 
     @xmlrpc_decorator
-    def query_snapshots(my, ticket, filters=None, columns=None, order_bys=[], show_retired=False, limit=None, offset=None, single=False, include_paths=False, include_full_xml=False, include_paths_dict=False, include_parent=False, include_files=False):
+    def query_snapshots(my, ticket, filters=None, columns=None, order_bys=[], show_retired=False, limit=None, offset=None, single=False, include_paths=False, include_full_xml=False, include_paths_dict=False, include_parent=False, include_files=False, include_web_paths_dict=False):
         '''thin wrapper around query, but is specific to querying snapshots
         with some useful included flags that are specific to snapshots
 
@@ -3962,6 +4020,10 @@ class ApiXMLRPC(BaseApiXMLRPC):
         include_paths_dict - flag to specify whether to include a
             __paths_dict__ property containing a dict of all paths in the
             dependent snapshots
+        include_web_paths_dict - flag to specify whether to include a
+            __web_paths_dict__ property containing a dict of all web paths in
+            the returned snapshots
+
         include_full_xml - flag to return the full xml definition of a snapshot
         include_parent - includes all of the parent attributes in a __parent__ dictionary
         include_files - includes all of the file objects referenced in the
@@ -4042,6 +4104,10 @@ class ApiXMLRPC(BaseApiXMLRPC):
             if include_paths_dict:
                 paths = snapshot.get_all_client_lib_paths_dict()
                 snapshot_dict['__paths_dict__'] = paths
+
+            if include_web_paths_dict:
+                paths = snapshot.get_all_web_paths_dict()
+                snapshot_dict['__web_paths_dict__'] = paths
 
             if include_parent:
                 search_key = snapshot_dict.get('__search_key__')
@@ -4278,7 +4344,6 @@ class ApiXMLRPC(BaseApiXMLRPC):
     @xmlrpc_decorator
     def create_task(my, ticket, search_key, process="publish", subcontext=None, description=None, bid_start_date=None, bid_end_date=None, bid_duration=None, assigned=None):
         '''Create a task for a particular sobject
-
         @params:
         ticket - authentication ticket
         search_key - the key identifying a type of sobject as registered in
@@ -4290,7 +4355,6 @@ class ApiXMLRPC(BaseApiXMLRPC):
         bid_end_date - the expected end date for this task
         bid_duration - the expected duration for this task
         assigned - the user assigned to this task
-
         @return
         task that was created
         ''' 
@@ -4315,16 +4379,20 @@ class ApiXMLRPC(BaseApiXMLRPC):
 
         task.set_parent(sobject)
 
+        if bid_start_date and bid_end_date:
+            if bid_start_date > bid_end_date:
+                raise ApiException("bid_start_date should be before bid_end_date.")
+
 
         if description:
             task.set_value("description", description)
 
         if bid_start_date:
-            task.set_value("bid_start_date", start_date)
+            task.set_value("bid_start_date", bid_start_date)
         if bid_end_date:
-            task.set_value("bid_end_date", end_date)
+            task.set_value("bid_end_date", bid_end_date)
         if bid_duration:
-            task.set_value("bid_duration", end_date)
+            task.set_value("bid_duration", bid_duration)
         if assigned:
             task.set_value("assigned", assigned)
 
@@ -5011,6 +5079,36 @@ class ApiXMLRPC(BaseApiXMLRPC):
         return ret_val
 
    
+
+    @xmlrpc_decorator
+    def execute_js_script(my, ticket, script_path, kwargs={}):
+        '''execute a js script in the script editor
+
+        @params
+        ticket - authentication ticket
+        script_path - script path in Script Editor, e.g. test/eval_sobj
+      
+        @return
+        dictionary - returned data structure
+
+        '''
+        ret_val = {}
+        try:
+            from tactic.command import JsCmd
+            cmd = JsCmd(script_path=script_path, **kwargs)
+            Command.execute_cmd(cmd)
+        
+        except Exception, e:
+            raise
+        else:
+            ret_val['status'] = 'OK'
+            ret_val['description'] = cmd.get_description()
+
+            info = cmd.get_info()
+            ret_val['info'] = info
+
+        return ret_val
+
 
         
     @xmlrpc_decorator

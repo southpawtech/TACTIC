@@ -1880,6 +1880,7 @@ class DiscussionAddNoteWdg(BaseRefreshWdg):
 
       
         content_div = my.top
+        content_div.add_style("min-width: 300px")
 
         my.set_as_panel(content_div)
         content_div.add_class("spt_discussion_add_note")
@@ -1988,7 +1989,7 @@ class DiscussionAddNoteWdg(BaseRefreshWdg):
         # this is a special case where we explicitly use processs/context for note
         #if use_parent =='true' and my.contexts:
         if my.contexts:
-            hidden =HiddenWdg("add_context")
+            hidden = HiddenWdg("add_context")
             hidden.set_value(my.contexts[0])
             content_div.add(hidden)
             if my.contexts[0] != my.process:
@@ -2000,6 +2001,7 @@ class DiscussionAddNoteWdg(BaseRefreshWdg):
 
         content_div.add("<br/>Note:<br/>")
         text = TextAreaWdg("note")
+        text.add_class("form-control")
         text.add_style("width: 100%")
         text.add_style("height: 100px")
         content_div.add(text)
@@ -2132,21 +2134,27 @@ class DiscussionAddNoteWdg(BaseRefreshWdg):
         table.add_color("color", "color")
         mail_div.add(table)
 
+        from tactic.ui.input import TextInputWdg
+
         # CC
         table.add_row()
         table.add_cell("Cc: ")
-        text = TextWdg("mail_cc")
+        text = TextInputWdg(name="mail_cc")
         text.add_style("width: 250px")
         table.add_cell(text)
 
-        table.add_row_cell()
+        tr, td = table.add_row_cell()
+        td.add("<br/>")
 
         # BCC 
         table.add_row()
         table.add_cell("Bcc: ")
-        text = TextWdg("mail_bcc")
+        text = TextInputWdg(name="mail_bcc")
         text.add_style("width: 250px")
         table.add_cell(text)
+
+        tr, td = table.add_row_cell()
+        td.add("<br/>")
 
         return content_div
 
@@ -2178,6 +2186,16 @@ class DiscussionAddNoteCmd(Command):
         context = my.kwargs.get("context")
         if not context:
             context = process
+        elif context.find("/"):
+            parts = context.split("/")
+            if parts:
+                try:
+                    # if the subcontext is a number, then ignore this
+                    subcontext = int(parts[1])
+                    context = parts[0]
+                except:
+                    pass
+
 
         from pyasm.biz import Note
         note = Note.create(sobject, note, context=context, process=process)
