@@ -338,7 +338,7 @@ class CherryPyStartup(CherryPyStartup20):
             project_code = Project.get_default_project()
             if not project_code:
                 project_code = Config.get_value('install','default_project')
-            if project_code and project_code !='default':
+            if project_code and project_code != 'default':
                 from tactic.ui.app import SitePage
                 cherrypy.root.tactic = SitePage(project_code)
                 cherrypy.root.projects = SitePage(project_code)
@@ -356,8 +356,6 @@ class CherryPyStartup(CherryPyStartup20):
             project_code = project.get_code()
             my.register_project(project_code, config)
         my.register_project("default", config)
-
-        print
 
 
         from pyasm.security import Site

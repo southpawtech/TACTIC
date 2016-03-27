@@ -27,6 +27,8 @@ class Batch(Environment):
         if not site:
             # if not explicitly set, keep the current site
            site = Site.get_site() 
+        if not site:
+            site = "default"
 
 
         plugin_dir = Environment.get_plugin_dir()

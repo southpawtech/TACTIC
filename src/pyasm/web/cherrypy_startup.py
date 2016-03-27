@@ -298,8 +298,8 @@ class CherryPyStartup(object):
         # register this as a cherrypy server
         os.environ['TACTIC_APP_SERVER'] = "cherrypy"
 
-	# DEPRECATED: don't need to do this anymore as the default will
-	# handled in __init__.py
+        # DEPRECATED: don't need to do this anymore as the default will
+        # handled in __init__.py
         """
         if os.name == "nt":
             conf = "tactic_win32-conf.xml"

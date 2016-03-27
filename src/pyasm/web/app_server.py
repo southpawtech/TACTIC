@@ -299,10 +299,15 @@ class BaseAppServer(Base):
     def _get_display(my):
 
         # set up the security object
-        from pyasm.security import Security, Sudo
+        from pyasm.security import Security, Sudo, Site
         from pyasm.biz import Project
         from pyasm.web import WebContainer
         web = WebContainer.get_web()
+
+
+        site = Site.get_site()
+        if not site:
+            Site.set_site("default")
 
 
         
